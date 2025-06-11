@@ -8,6 +8,14 @@
   ],
   "routes": [
     {
+      "src": "/token",
+      "dest": "index.js"
+    },
+    {
+      "src": "/voice",
+      "dest": "index.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "index.js"
     }
