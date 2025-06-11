@@ -5,17 +5,18 @@ const VoiceGrant = AccessToken.VoiceGrant;
 const nameGenerator = require("../name_generator");
 const config = require("../config");
 
-var identity;
+// Store identity in a more persistent way
+let currentIdentity = null;
 
 exports.tokenGenerator = function tokenGenerator() {
-  identity = nameGenerator();
+  currentIdentity = nameGenerator();
 
   const accessToken = new AccessToken(
     config.accountSid,
     config.apiKey,
     config.apiSecret
   );
-  accessToken.identity = identity;
+  accessToken.identity = currentIdentity;
   const grant = new VoiceGrant({
     outgoingApplicationSid: config.twimlAppSid,
     incomingAllow: true,
@@ -24,7 +25,7 @@ exports.tokenGenerator = function tokenGenerator() {
 
   // Include identity and token in a JSON response
   return {
-    identity: identity,
+    identity: currentIdentity,
     token: accessToken.toJwt(),
   };
 };
@@ -34,13 +35,24 @@ exports.voiceResponse = function voiceResponse(requestBody) {
   const callerId = config.callerId;
   let twiml = new VoiceResponse();
 
+  console.log('Voice request:', {
+    to: toNumberOrClientName,
+    callerId: callerId,
+    currentIdentity: currentIdentity,
+    requestBody: requestBody
+  });
+
   // If the request to the /voice endpoint is TO your Twilio Number, 
   // then it is an incoming call towards your Twilio.Device.
   if (toNumberOrClientName == callerId) {
     let dial = twiml.dial();
 
     // This will connect the caller with your Twilio.Device/client 
-    dial.client(identity);
+    if (currentIdentity) {
+      dial.client(currentIdentity);
+    } else {
+      twiml.say("No client available to connect to.");
+    }
 
   } else if (requestBody.To) {
     // This is an outgoing call
@@ -58,7 +70,9 @@ exports.voiceResponse = function voiceResponse(requestBody) {
     twiml.say("Thanks for calling!");
   }
 
-  return twiml.toString();
+  const twimlString = twiml.toString();
+  console.log('Generated TwiML:', twimlString);
+  return twimlString;
 };
 
 /**
