@@ -3,6 +3,7 @@
   <head>
     <title>Twilio Voice JavaScript SDK Quickstart</title>
     <link rel="stylesheet" href="site.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
   </head>
   <body>
     <header>
@@ -14,11 +15,13 @@
         <h2>Your Device Info</h2>
         <div id="client-name"></div>
         <div id="output-selection" class="hide">
+          <label>Microphone Devices</label>
+          <select id="microphone-devices" multiple></select>
           <label>Ringtone Devices</label>
           <select id="ringtone-devices" multiple></select>
           <label>Speaker Devices</label>
-          <select id="speaker-devices" multiple></select
-          ><br />
+          <select id="speaker-devices" multiple></select>
+          <br />
           <button id="get-devices">Seeing "Unknown" devices?</button>
         </div>
       </section>

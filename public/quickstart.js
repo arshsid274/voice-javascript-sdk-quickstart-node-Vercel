@@ -1,6 +1,7 @@
 ﻿$(function () {
   const speakerDevices = document.getElementById("speaker-devices");
   const ringtoneDevices = document.getElementById("ringtone-devices");
+  const microphoneDevices = document.getElementById("microphone-devices");
   const outputVolumeBar = document.getElementById("output-volume");
   const inputVolumeBar = document.getElementById("input-volume");
   const volumeIndicators = document.getElementById("volume-indicators");
@@ -27,6 +28,12 @@
   let device;
   let token;
 
+  // Check if running on mobile device
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    log("Mobile device detected - optimizing for mobile experience");
+  }
+
   // Event Listeners
 
   callButton.onclick = (e) => {
@@ -36,7 +43,7 @@
   getAudioDevicesButton.onclick = getAudioDevices;
   speakerDevices.addEventListener("change", updateOutputDevice);
   ringtoneDevices.addEventListener("change", updateRingtoneDevice);
-  
+  microphoneDevices.addEventListener("change", updateInputDevice);
 
   // SETUP STEP 1:
   // Browser client should be started after a user gesture
@@ -64,12 +71,34 @@
   function intitializeDevice() {
     logDiv.classList.remove("hide");
     log("Initializing device");
-    device = new Twilio.Device(token, {
-      logLevel:1,
+    
+    // Enhanced device configuration for mobile compatibility
+    const deviceConfig = {
+      logLevel: 1,
       // Set Opus as our preferred codec. Opus generally performs better, requiring less bandwidth and
       // providing better audio quality in restrained network conditions.
       codecPreferences: ["opus", "pcmu"],
-    });
+      // Enable close protection for better mobile performance
+      closeProtection: true,
+      // Enable audio constraints for mobile devices
+      audioConstraints: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    };
+
+    // Add mobile-specific configurations
+    if (isMobile) {
+      deviceConfig.audioConstraints = {
+        ...deviceConfig.audioConstraints,
+        // Optimize for mobile audio
+        sampleRate: 16000,
+        channelCount: 1
+      };
+    }
+
+    device = new Twilio.Device(token, deviceConfig);
 
     addDeviceListeners(device);
 
@@ -83,20 +112,23 @@
     device.on("registered", function () {
       log("Twilio.Device Ready to make and receive calls!");
       callControlsDiv.classList.remove("hide");
+      
+      // Show audio selection UI if it is supported by the browser.
+      if (device.audio.isOutputSelectionSupported || device.audio.isInputSelectionSupported) {
+        audioSelectionDiv.classList.remove("hide");
+        // Update devices immediately after registration
+        updateAllAudioDevices();
+      }
     });
 
     device.on("error", function (error) {
       log("Twilio.Device Error: " + error.message);
+      console.error("Device error:", error);
     });
 
     device.on("incoming", handleIncomingCall);
 
     device.audio.on("deviceChange", updateAllAudioDevices.bind(device));
-
-    // Show audio selection UI if it is supported by the browser.
-    if (device.audio.isOutputSelectionSupported) {
-      audioSelectionDiv.classList.remove("hide");
-    }
   }
 
   // MAKE AN OUTGOING CALL
@@ -110,19 +142,29 @@
     if (device) {
       log(`Attempting to call ${params.To} ...`);
 
-      // Twilio.Device.connect() returns a Call object
-      const call = await device.connect({ params });
+      try {
+        // Twilio.Device.connect() returns a Call object
+        const call = await device.connect({ params });
 
-      // add listeners to the Call
-      // "accepted" means the call has finished connecting and the state is now "open"
-      call.on("accept", updateUIAcceptedOutgoingCall);
-      call.on("disconnect", updateUIDisconnectedOutgoingCall);
-      call.on("cancel", updateUIDisconnectedOutgoingCall);
+        // add listeners to the Call
+        // "accepted" means the call has finished connecting and the state is now "open"
+        call.on("accept", updateUIAcceptedOutgoingCall);
+        call.on("disconnect", updateUIDisconnectedOutgoingCall);
+        call.on("cancel", updateUIDisconnectedOutgoingCall);
+        call.on("error", (error) => {
+          log(`Call error: ${error.message}`);
+          console.error('Call error:', error);
+        });
 
-      outgoingCallHangupButton.onclick = () => {
-        log("Hanging up ...");
-        call.disconnect();
-      };
+        outgoingCallHangupButton.onclick = () => {
+          log("Hanging up ...");
+          call.disconnect();
+        };
+
+      } catch (error) {
+        log(`Error making call: ${error.message}`);
+        console.error('Call error:', error);
+      }
 
     } else {
       log("Unable to make call.");
@@ -231,14 +273,28 @@
   // AUDIO CONTROLS
 
   async function getAudioDevices() {
-    await navigator.mediaDevices.getUserMedia({ audio: true });
-    updateAllAudioDevices.bind(device);
+    try {
+      // Request microphone permission first
+      await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+      log("Microphone permission granted");
+      updateAllAudioDevices();
+    } catch (error) {
+      log("Error accessing microphone: " + error.message);
+      console.error("Microphone access error:", error);
+    }
   }
 
   function updateAllAudioDevices() {
     if (device) {
       updateDevices(speakerDevices, device.audio.speakerDevices.get());
       updateDevices(ringtoneDevices, device.audio.ringtoneDevices.get());
+      updateInputDevices(microphoneDevices, device.audio.inputDevices.get());
     }
   }
 
@@ -248,6 +304,7 @@
       .map((node) => node.getAttribute("data-id"));
 
     device.audio.speakerDevices.set(selectedDevices);
+    log("Speaker device updated");
   }
 
   function updateRingtoneDevice() {
@@ -256,6 +313,16 @@
       .map((node) => node.getAttribute("data-id"));
 
     device.audio.ringtoneDevices.set(selectedDevices);
+    log("Ringtone device updated");
+  }
+
+  function updateInputDevice() {
+    const selectedDevices = Array.from(microphoneDevices.children)
+      .filter((node) => node.selected)
+      .map((node) => node.getAttribute("data-id"));
+
+    device.audio.inputDevices.set(selectedDevices);
+    log("Microphone device updated");
   }
 
   function bindVolumeIndicators(call) {
@@ -287,6 +354,28 @@
     selectEl.innerHTML = "";
 
     device.audio.availableOutputDevices.forEach(function (device, id) {
+      var isActive = selectedDevices.size === 0 && id === "default";
+      selectedDevices.forEach(function (device) {
+        if (device.deviceId === id) {
+          isActive = true;
+        }
+      });
+
+      var option = document.createElement("option");
+      option.label = device.label;
+      option.setAttribute("data-id", id);
+      if (isActive) {
+        option.setAttribute("selected", "selected");
+      }
+      selectEl.appendChild(option);
+    });
+  }
+
+  // Update the available input (microphone) devices
+  function updateInputDevices(selectEl, selectedDevices) {
+    selectEl.innerHTML = "";
+
+    device.audio.availableInputDevices.forEach(function (device, id) {
       var isActive = selectedDevices.size === 0 && id === "default";
       selectedDevices.forEach(function (device) {
         if (device.deviceId === id) {
