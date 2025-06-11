@@ -6,10 +6,23 @@
       "use": "@vercel/node"
     }
   ],
-  "rewrites": [
-    { "source": "/token", "destination": "index.js" },
-    { "source": "/voice", "destination": "index.js" },
-    { "source": "/(.*)", "destination": "index.js" }
+  "routes": [
+    {
+      "src": "/token",
+      "dest": "index.js"
+    },
+    {
+      "src": "/voice",
+      "dest": "index.js"
+    },
+    {
+      "src": "/voices",
+      "dest": "index.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "index.js"
+    }
   ],
   "headers": [
     {

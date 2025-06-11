@@ -15,7 +15,8 @@ router.get("/token", (req, res) => {
   }
 });
 
-router.post("/voice", (req, res) => {
+// Handle both /voice and /voices endpoints
+router.post(["/voice", "/voices"], (req, res) => {
   console.log('Voice request received:', req.body);
   try {
     res.set("Content-Type", "text/xml");
