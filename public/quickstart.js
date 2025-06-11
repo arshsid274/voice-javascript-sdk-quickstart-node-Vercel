@@ -27,6 +27,7 @@
 
   let device;
   let token;
+  let availableMicrophones = [];
 
   // Check if running on mobile device
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -143,8 +144,20 @@
       log(`Attempting to call ${params.To} ...`);
 
       try {
+        // Get selected microphone device
+        const selectedMicrophone = getSelectedMicrophoneDevice();
+        if (selectedMicrophone) {
+          log(`Using microphone: ${selectedMicrophone.label}`);
+        }
+
         // Twilio.Device.connect() returns a Call object
-        const call = await device.connect({ params });
+        const call = await device.connect({ 
+          params,
+          // Pass the selected microphone device
+          audioConstraints: selectedMicrophone ? {
+            deviceId: { exact: selectedMicrophone.deviceId }
+          } : undefined
+        });
 
         // add listeners to the Call
         // "accepted" means the call has finished connecting and the state is now "open"
@@ -283,6 +296,9 @@
         } 
       });
       log("Microphone permission granted");
+      
+      // Get all available audio input devices
+      await updateMicrophoneDevices();
       updateAllAudioDevices();
     } catch (error) {
       log("Error accessing microphone: " + error.message);
@@ -290,11 +306,63 @@
     }
   }
 
+  // Get all available microphone devices using Web Audio API
+  async function updateMicrophoneDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputDevices = devices.filter(device => device.kind === 'audioinput');
+      
+      availableMicrophones = audioInputDevices;
+      log(`Found ${audioInputDevices.length} microphone device(s)`);
+      
+      // Update the microphone dropdown
+      updateMicrophoneDropdown(audioInputDevices);
+      
+    } catch (error) {
+      log("Error enumerating microphone devices: " + error.message);
+      console.error("Device enumeration error:", error);
+    }
+  }
+
+  // Update the microphone dropdown with available devices
+  function updateMicrophoneDropdown(audioInputDevices) {
+    microphoneDevices.innerHTML = "";
+    
+    audioInputDevices.forEach((device, index) => {
+      const option = document.createElement("option");
+      option.label = device.label || `Microphone ${index + 1}`;
+      option.value = device.deviceId;
+      option.setAttribute("data-id", device.deviceId);
+      
+      // Select the first device by default
+      if (index === 0) {
+        option.setAttribute("selected", "selected");
+      }
+      
+      microphoneDevices.appendChild(option);
+    });
+    
+    log("Microphone devices updated");
+  }
+
+  // Get the currently selected microphone device
+  function getSelectedMicrophoneDevice() {
+    const selectedOption = microphoneDevices.options[microphoneDevices.selectedIndex];
+    if (selectedOption) {
+      return availableMicrophones.find(device => device.deviceId === selectedOption.value);
+    }
+    return null;
+  }
+
   function updateAllAudioDevices() {
     if (device) {
       updateDevices(speakerDevices, device.audio.speakerDevices.get());
       updateDevices(ringtoneDevices, device.audio.ringtoneDevices.get());
-      updateInputDevices(microphoneDevices, device.audio.inputDevices.get());
+      
+      // Update microphone devices if not already done
+      if (availableMicrophones.length === 0) {
+        updateMicrophoneDevices();
+      }
     }
   }
 
@@ -317,12 +385,10 @@
   }
 
   function updateInputDevice() {
-    const selectedDevices = Array.from(microphoneDevices.children)
-      .filter((node) => node.selected)
-      .map((node) => node.getAttribute("data-id"));
-
-    device.audio.inputDevices.set(selectedDevices);
-    log("Microphone device updated");
+    const selectedDevice = getSelectedMicrophoneDevice();
+    if (selectedDevice) {
+      log(`Microphone changed to: ${selectedDevice.label}`);
+    }
   }
 
   function bindVolumeIndicators(call) {
@@ -371,25 +437,11 @@
     });
   }
 
-  // Update the available input (microphone) devices
-  function updateInputDevices(selectEl, selectedDevices) {
-    selectEl.innerHTML = "";
-
-    device.audio.availableInputDevices.forEach(function (device, id) {
-      var isActive = selectedDevices.size === 0 && id === "default";
-      selectedDevices.forEach(function (device) {
-        if (device.deviceId === id) {
-          isActive = true;
-        }
-      });
-
-      var option = document.createElement("option");
-      option.label = device.label;
-      option.setAttribute("data-id", id);
-      if (isActive) {
-        option.setAttribute("selected", "selected");
-      }
-      selectEl.appendChild(option);
+  // Listen for device changes
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener('devicechange', () => {
+      log("Audio devices changed - updating device list");
+      updateMicrophoneDevices();
     });
   }
 });
