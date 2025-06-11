@@ -8,21 +8,14 @@
   ],
   "routes": [
     {
-      "src": "/token",
-      "methods": ["GET"],
-      "dest": "index.js"
-    },
-    {
-      "src": "/voice",
-      "methods": ["POST"],
-      "headers": {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      "dest": "index.js"
-    },
-    {
       "src": "/(.*)",
       "dest": "index.js"
     }
-  ]
+  ],
+  "functions": {
+    "api/**/*.js": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  }
 }
