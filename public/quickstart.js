@@ -73,31 +73,12 @@
     logDiv.classList.remove("hide");
     log("Initializing device");
     
-    // Enhanced device configuration for mobile compatibility
+    // Simplified device configuration - remove conflicting audio constraints
     const deviceConfig = {
       logLevel: 1,
-      // Set Opus as our preferred codec. Opus generally performs better, requiring less bandwidth and
-      // providing better audio quality in restrained network conditions.
       codecPreferences: ["opus", "pcmu"],
-      // Enable close protection for better mobile performance
-      closeProtection: true,
-      // Enable audio constraints for mobile devices
-      audioConstraints: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
+      closeProtection: true
     };
-
-    // Add mobile-specific configurations
-    if (isMobile) {
-      deviceConfig.audioConstraints = {
-        ...deviceConfig.audioConstraints,
-        // Optimize for mobile audio
-        sampleRate: 16000,
-        channelCount: 1
-      };
-    }
 
     device = new Twilio.Device(token, deviceConfig);
 
@@ -144,20 +125,23 @@
       log(`Attempting to call ${params.To} ...`);
 
       try {
+        // Ensure microphone permission is granted before making call
+        await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          } 
+        });
+        
         // Get selected microphone device
         const selectedMicrophone = getSelectedMicrophoneDevice();
         if (selectedMicrophone) {
           log(`Using microphone: ${selectedMicrophone.label}`);
         }
 
-        // Twilio.Device.connect() returns a Call object
-        const call = await device.connect({ 
-          params,
-          // Pass the selected microphone device
-          audioConstraints: selectedMicrophone ? {
-            deviceId: { exact: selectedMicrophone.deviceId }
-          } : undefined
-        });
+        // Simplified connect call without audioConstraints to avoid conflicts
+        const call = await device.connect({ params });
 
         // add listeners to the Call
         // "accepted" means the call has finished connecting and the state is now "open"
@@ -230,13 +214,25 @@
   // ACCEPT INCOMING CALL
 
   function acceptIncomingCall(call) {
-    call.accept();
-
-    //update UI
-    log("Accepted incoming call.");
-    incomingCallAcceptButton.classList.add("hide");
-    incomingCallRejectButton.classList.add("hide");
-    incomingCallHangupButton.classList.remove("hide");
+    // Ensure microphone permission before accepting call
+    navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      } 
+    }).then(() => {
+      call.accept();
+      
+      //update UI
+      log("Accepted incoming call.");
+      incomingCallAcceptButton.classList.add("hide");
+      incomingCallRejectButton.classList.add("hide");
+      incomingCallHangupButton.classList.remove("hide");
+    }).catch((error) => {
+      log(`Error accessing microphone: ${error.message}`);
+      console.error('Microphone access error:', error);
+    });
   }
 
   // REJECT INCOMING CALL
@@ -443,5 +439,23 @@
       log("Audio devices changed - updating device list");
       updateMicrophoneDevices();
     });
+  }
+
+  // Test microphone access function
+  function testMicrophoneAccess() {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        log("Microphone access successful");
+        // Create a simple audio context to test
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        source.connect(analyser);
+        log("Audio context created successfully");
+      })
+      .catch(error => {
+        log(`Microphone access failed: ${error.message}`);
+        console.error('Microphone test error:', error);
+      });
   }
 });
